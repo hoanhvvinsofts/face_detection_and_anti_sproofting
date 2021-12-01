@@ -17,8 +17,8 @@ import dlib
 import cv2
 import os
 import _thread
-
-
+import shutil
+import torch
 
 ap = argparse.ArgumentParser()
 
@@ -51,9 +51,8 @@ labels = le.fit_transform(data['names'])
 
 # Initialize detector
 # detector = MTCNN()
-detector = MTCNN(thresholds= [0.7, 0.7, 0.8] ,keep_all=True, device = 'cuda')
-
-
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+detector = MTCNN(thresholds=[0.7, 0.7, 0.8], keep_all=True, device=device)
 
 # Initialize faces embedding model
 embedding_model = face_model.FaceModel(args)
@@ -83,21 +82,12 @@ def CosineSimilarity(test_vec, source_vecs):
         cos_dist += findCosineDistance(test_vec, source_vec)
     return cos_dist/len(source_vecs)
 
-def check_and_save_image(frame, folder="datasets/unlabel/unknown"):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    count_path = 0
-    while True:
-        frame_file = folder + f"/unknown{count_path}.jpg"
-        if os.path.isfile(frame_file):
-            count_path += 1
-        else:
-            cv2.imwrite(frame_file, frame)
-            break
-
 def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown"):
+    shutil.rmtree(unknow_folder, ignore_errors=True)
+    if not os.path.exists(unknow_folder):
+        os.makedirs(unknow_folder)
+    time.sleep(7.5)
     input_frame = input(">> Input label name: ")
-    time.sleep(5)
     target_folder = "datasets/train/" + input_frame
     if os.path.isdir(target_folder):
         print("This label has already exist, try other label.")
@@ -112,6 +102,20 @@ def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown")
                 print("WARNING: Duplicate file inside folder: ", target_folder)
                 pass
 
+def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    
+    count_path = 0
+    while True:
+        frame_file = folder + f"/unknown{count_path}.jpg"
+        if os.path.isfile(frame_file):
+            count_path += 1
+        else:
+            cv2.imwrite(frame_file, nimg)
+            print("Save image sucessful", frame_file)
+            break
+
 def stream():
     # Initialize some useful arguments
     cosine_threshold = 0.8
@@ -119,10 +123,11 @@ def stream():
     comparing_num = 5
     trackers = []
     texts = []
+    fake_ckeck = []
     frames = 0
     
-    prev_frame_time = 0
-    new_frame_time = 0
+    fps_prev_frame = 0
+    fps_new_frame = 0
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
@@ -135,27 +140,20 @@ def stream():
     while True:
         ret, frame = cap.read()
         frames += 1
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame = cv2.resize(frame, (save_width, save_height))
-        
-        new_frame_time = time.time()
+        # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # frame = cv2.resize(frame, (save_width, save_height))
+        fps_new_frame = time.time()
         
         # Save 5 frame if press "a" button
         if cv2.waitKey(33) == ord('a'):
-            frame_count = frame_count + 1
-            print("Order received, save 5 frame to datasets/unlabel/unknow")
+            frame_count = 1
+            print(">> Order received, save 10 frame to datasets/unlabel/unknow")
             _thread.start_new_thread(import_label_and_move_to_train_dir, ())
-            
-        if frame_count >= 10 and frame_count != 0:
-            frame_count = 0
-        elif frame_count != 0:
-            if frames%3 == 0:
-                _thread.start_new_thread(check_and_save_image, (frame, ))
-                frame_count += 1
         
         if frames%3 == 0:
             trackers = []
             texts = []
+            fake_ckeck = []
             
             # bbox_start = time.time()                    #TIME
             # bboxes = detector.detect_faces(frame)
@@ -163,42 +161,49 @@ def stream():
             # bbox_end = time.time()                      #TIME
             # print("Bbox time cost:", bbox_end-bbox_start)
             
-            # '''
             # if len(bboxes) != 0:
             if bboxes is not None:
                 
-                # start = time.time()
+                # start = time.time()                               # TIME
                 
                 # for bboxe in bboxes:
                 for bboxe, landmark in zip(bboxes, landmarks):
                     # embedding_start = time.time()                   #TIME
                     bbox = list(map(int,bboxe.tolist()))
-                    
+                    bbox_check = bbox
                     bbox = np.array([bbox[0], bbox[1], bbox[2], bbox[3]])
                     landmarks = landmark
                     landmarks = np.array([landmarks[0][0], landmarks[1][0], landmarks[2][0], landmarks[3][0], landmarks[4][0],
                                         landmarks[0][1], landmarks[1][1], landmarks[2][1], landmarks[3][1], landmarks[4][1]])
-                    
                     landmarks = landmarks.reshape((2,5)).T
-                    nimg = face_preprocess.preprocess(frame, bbox, landmarks, image_size='112,112')
+                    nimg = face_preprocess.preprocess(frame, bbox, landmarks, image_size='112, 112')    
+                    
+                    # Save image for training
+                    if frame_count > 10:
+                        frame_count = 0
+                    if frame_count != 0:
+                        _thread.start_new_thread(check_and_save_image, (nimg, ))
+                        frame_count += 1
+
                     nimg = cv2.cvtColor(nimg, cv2.COLOR_BGR2RGB)
                     nimg = np.transpose(nimg, (2,0,1))
                     embedding = embedding_model.get_feature(nimg).reshape(1,-1)
                     # embedding_end = time.time()                   #TIME
                     # print("Embedding time cost:", embedding_end-embedding_start)
+                    
                     text = ""
                     
                     # anti_sproofing_start = time.time()            #TIME
-                    fake, score = anti_sproofing(frame)
+                    fake, score = anti_sproofing(frame, bbox_check)
                     # anti_sproofing_end = time.time()              #TIME
                     # print("Anti sproffing time cost:", anti_sproofing_end-anti_sproofing_start)
-                    
                     if fake:
-                        text = "Fake face " + str(score)
+                        text = "Fake face " + str(round(score, 2))
+                        fake_ckeck.append(True)
+                        texts.append(text)
                         
                     else:
                         # Predict class
-                        
                         # predict_start = time.time()                 #TIME
                         preds = model.predict(embedding)
                         preds = preds.flatten()
@@ -222,23 +227,24 @@ def stream():
                     # Start tracking
                     tracker = dlib.correlation_tracker()
                     rect = dlib.rectangle(bbox[0], bbox[1], bbox[2], bbox[3])
-                    tracker.start_track(rgb, rect)
+                    tracker.start_track(frame, rect)
                     trackers.append(tracker)
                     texts.append(text)
-
+                    fake_ckeck.append(False)
+                    
                     y = bbox[1] - 10 if bbox[1] - 10 > 10 else bbox[1] + 10
-                    cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255,255,255), 2)
                     if fake:
+                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
                         cv2.putText(frame, text, (bbox[0], y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
                     else:
-                        cv2.putText(frame, text, (bbox[0], y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 2)
-                    # '''
+                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255,255,255), 2)
+                        cv2.putText(frame, text, (bbox[0], y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
                     
                 # end = time.time()
                 # print("Time cost:", end-start)
                 
         else:
-            for tracker, text in zip(trackers,texts):
+            for tracker, text, fake_ in zip(trackers,texts,fake_ckeck):
                 pos = tracker.get_position()
 
                 # unpack the position object
@@ -246,23 +252,25 @@ def stream():
                 startY = int(pos.top())
                 endX = int(pos.right())
                 endY = int(pos.bottom())
-
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
-                cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1)
+                
+                if fake_ is True:
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0,0,255), 1)
+                    cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
+                else:
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
+                    cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
         
-        fps = 1/(new_frame_time-prev_frame_time)
-        prev_frame_time = new_frame_time
-        cv2.putText(frame, str(fps), (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        # Calulate fps
+        fps = 1/(fps_new_frame - fps_prev_frame)
+        fps_prev_frame = fps_new_frame
+        cv2.putText(frame, str(round(fps, 2)), (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        
         cv2.imshow("Frame", frame)
-        # video_out.write(frame)
-        # print("Faces detection time: {}s".format(detect_tock-detect_tick))
-        # print("Faces recognition time: {}s".format(reco_tock-reco_tick))
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
-        
-    # video_out.release()
+
     cap.release()
     cv2.destroyAllWindows()
+    
 stream()
-

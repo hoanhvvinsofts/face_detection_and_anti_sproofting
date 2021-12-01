@@ -1,7 +1,7 @@
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import KFold
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
 from softmax import SoftMax
@@ -75,24 +75,24 @@ f = open(args["le"], "wb")
 f.write(pickle.dumps(le))
 f.close()
 
-# Plot
-plt.figure(1)
-# Summary history for accuracy
-plt.subplot(211)
-plt.plot(history['acc'])
-plt.plot(history['val_acc'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.legend(['train', 'test'], loc='upper left')
+# # Plot
+# plt.figure(1)
+# # Summary history for accuracy
+# plt.subplot(211)
+# plt.plot(history['acc'])
+# plt.plot(history['val_acc'])
+# plt.title('model accuracy')
+# plt.ylabel('accuracy')
+# plt.xlabel('epoch')
+# plt.legend(['train', 'test'], loc='upper left')
 
-# Summary history for loss
-plt.subplot(212)
-plt.plot(history['loss'])
-plt.plot(history['val_loss'])
-plt.title('model loss')
-plt.ylabel('loss')
-plt.xlabel('epochs')
-plt.legend(['train', 'test'], loc='upper left')
-plt.savefig('outputs/accuracy_loss.png')
-plt.show()
+# # Summary history for loss
+# plt.subplot(212)
+# plt.plot(history['loss'])
+# plt.plot(history['val_loss'])
+# plt.title('model loss')
+# plt.ylabel('loss')
+# plt.xlabel('epochs')
+# plt.legend(['train', 'test'], loc='upper left')
+# plt.savefig('outputs/accuracy_loss.png')
+# plt.show()

@@ -2,8 +2,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join('..')))
 sys.path.append("output")
-sys.path.append('insightface/deploy')
-sys.path.append('insightface/src/common')
+sys.path.append('../insightface/deploy')
+sys.path.append('../insightface/src/common')
 
 
 from mtcnn.mtcnn import MTCNN
@@ -17,9 +17,9 @@ import cv2
 
 ap = argparse.ArgumentParser()
 
-ap.add_argument("--video", default="E:/Timekeeping/Face Recognition with InsightFace/datasets/videos_input/hang.mp4",
+ap.add_argument("--video", default="E:/Timekeeping/Face Recognition with InsightFace/datasets/videos_input/hoan.mp4",
                 help="Number of faces that camera will get")
-ap.add_argument("--output", default="../datasets/train/hang",
+ap.add_argument("--output", default="../datasets/train/Hoan",
                 help="Path to faces output")
 
 args = vars(ap.parse_args())
@@ -40,6 +40,7 @@ def get_faces_from_video(video_input=args["video"], output_frames_folder=args["o
             break
         frames += 1
         if frames%10 == 0:
+            
             # Get all faces on current frame
             bboxes = detector.detect_faces(frame)
 

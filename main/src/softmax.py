@@ -1,7 +1,8 @@
-from keras.layers import Dense, Dropout
-from keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
-import keras
+from tensorflow import keras
+# import keras
 
 class SoftMax():
     def __init__(self, input_shape, num_classes):

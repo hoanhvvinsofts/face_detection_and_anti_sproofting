@@ -93,3 +93,5 @@ def train():
     plt.legend(['train', 'test'], loc='upper left')
     plt.savefig('outputs/accuracy_loss.png')
     plt.show()
+
+train()

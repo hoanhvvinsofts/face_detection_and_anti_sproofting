@@ -49,7 +49,7 @@ labels = le.fit_transform(data['names'])
 detector = MTCNN()
 
 # Initialize faces embedding model
-embedding_model =face_model.FaceModel(args)
+embedding_model = face_model.FaceModel(args)
 
 # Load the classifier model
 model = load_model(args.mymodel)

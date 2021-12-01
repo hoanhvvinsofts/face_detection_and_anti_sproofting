@@ -52,7 +52,7 @@ while faces < max_faces:
 
         max_bbox = max_bbox[0:4]
 
-
+        
         # get each of 3 frames
         if frames%3 == 0:
             # convert to face_preprocess.preprocess input
