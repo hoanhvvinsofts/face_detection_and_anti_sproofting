@@ -7,6 +7,7 @@ from facenet_pytorch import MTCNN
 from tensorflow.keras.models import load_model
 from anti_sproofing import anti_sproofing
 from imutils import paths
+import mediapipe as mp
 import face_preprocess
 import numpy as np
 import face_model
@@ -129,19 +130,16 @@ def stream():
     fps_prev_frame = 0
     fps_new_frame = 0
     
+    mp_facedetector = mp.solutions.face_detection
+    mp_draw = mp.solutions.drawing_utils
+    
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
-    frame_width = int(cap.get(3))
-    frame_height = int(cap.get(4))
-    save_width = 600
-    save_height = int(600/frame_width*frame_height)
     frame_count = 0
-    
+
     while True:
-        ret, frame = cap.read()
+        _, frame = cap.read()
         frames += 1
-        # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # frame = cv2.resize(frame, (save_width, save_height))
         fps_new_frame = time.time()
         
         # Save 5 frame if press "a" button
@@ -157,17 +155,19 @@ def stream():
             
             # bbox_start = time.time()                    #TIME
             # bboxes = detector.detect_faces(frame)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             bboxes, _, landmarks = detector.detect(frame, landmarks=True)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             # bbox_end = time.time()                      #TIME
             # print("Bbox time cost:", bbox_end-bbox_start)
             
             # if len(bboxes) != 0:
             if bboxes is not None:
-                
                 # start = time.time()                               # TIME
                 
                 # for bboxe in bboxes:
                 for bboxe, landmark in zip(bboxes, landmarks):
+                    
                     # embedding_start = time.time()                   #TIME
                     bbox = list(map(int,bboxe.tolist()))
                     bbox_check = bbox
@@ -187,7 +187,9 @@ def stream():
 
                     nimg = cv2.cvtColor(nimg, cv2.COLOR_BGR2RGB)
                     nimg = np.transpose(nimg, (2,0,1))
+                    
                     embedding = embedding_model.get_feature(nimg).reshape(1,-1)
+                    
                     # embedding_end = time.time()                   #TIME
                     # print("Embedding time cost:", embedding_end-embedding_start)
                     

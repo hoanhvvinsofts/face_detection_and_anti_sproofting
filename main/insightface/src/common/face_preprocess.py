@@ -91,7 +91,7 @@ def preprocess(img, bbox=None, landmark=None, **kwargs):
     ret = img[bb[1]:bb[3],bb[0]:bb[2],:]
     if len(image_size)>0:
       ret = cv2.resize(ret, (image_size[1], image_size[0]))
-    return ret 
+    return ret
   else: #do align using landmark
     assert len(image_size)==2
 
@@ -109,5 +109,3 @@ def preprocess(img, bbox=None, landmark=None, **kwargs):
     #tform3.estimate(src, dst)
     #warped = trans.warp(img, tform3, output_shape=_shape)
     return warped
-
-

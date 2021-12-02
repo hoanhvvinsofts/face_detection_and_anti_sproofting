@@ -121,7 +121,7 @@ while True:
                 nimg = cv2.cvtColor(nimg, cv2.COLOR_BGR2RGB)
                 nimg = np.transpose(nimg, (2,0,1))
                 embedding = embedding_model.get_feature(nimg).reshape(1,-1)
-
+                
                 text = "Unknown"
 
                 # Predict class
@@ -153,6 +153,7 @@ while True:
                 y = bbox[1] - 10 if bbox[1] - 10 > 10 else bbox[1] + 10
                 cv2.putText(frame, text, (bbox[0], y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255,0,0), 2)
+                
     else:
         for tracker, text in zip(trackers,texts):
             pos = tracker.get_position()

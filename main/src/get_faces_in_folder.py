@@ -28,6 +28,18 @@ def get_faces_from_folder(folder_path="datasets/train/Hoann"):
     
     for i, img_path in enumerate(imagePaths):    
         # Get all faces on current frame
+        
+    #     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #     results = face_detection.process(image)
+    #     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    #     h, w, c = image.shape
+        
+    #     if results.detections:
+    #         for id, detection in enumerate(results.detections):
+    #             mp_draw.draw_detection(image, detection)
+    #             bBox = detection.location_data.relative_bounding_box
+    #             boundBox = int(bBox.xmin * w), int(bBox.ymin * h), int(bBox.width * w), int(bBox.height * h)
+
         img = cv2.imwrite(img_path)
         print(img_path)
         bboxes = detector.detect_faces(img)

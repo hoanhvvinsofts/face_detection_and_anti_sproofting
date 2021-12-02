@@ -9,14 +9,20 @@
 * numpy
 * sklearn
 * Imutils
-* OpenCV 
+* OpenCV
+* mxnet
+* easydict
+* facenet-pytorch
+* mediapipe
 
-## Face Detection Usage
-cd Face Recognition with InsightFace
-python main.py for train with new data, with inputs are face video and label name
-src/ recognize_[image/stream/video].py to test
+## Test with facenet-pytorch mtcnn detector
+```
+cd main
+python stream_test.py
+```
 
-## Anti Spoofing Usage
-cd Silent Face Anti Spoofing
-test.py --video_input --videoinput.mp4
-
+## Test with mediapipe detector
+```
+cd main
+python main.py
+```
