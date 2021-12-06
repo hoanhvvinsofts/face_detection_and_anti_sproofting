@@ -11,6 +11,7 @@ import shutil
 import _thread
 import sys
 import pickle
+import dlib
 
 sys.path.append('insightface/deploy')
 sys.path.append('insightface/src/common')
@@ -75,7 +76,7 @@ def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown")
     shutil.rmtree(unknow_folder, ignore_errors=True)
     if not os.path.exists(unknow_folder):
         os.makedirs(unknow_folder)
-    time.sleep(7.5)
+    time.sleep(2.5)
     input_frame = input(">> Input label name: ")
     target_folder = "datasets/train/" + input_frame
     if os.path.isdir(target_folder):
@@ -114,9 +115,6 @@ def crop_box_face(frame, detection):
         bbox.ymin = int(bbox.ymin * image_height)
         bbox.width = int(bbox.width * image_width)
         bbox.height = int(bbox.height * image_height)
-        # cv2.rectangle(frame, (int(bbox.xmin), int(bbox.ymin)), (int(bbox.xmin + bbox.width), int(bbox.ymin + bbox.height)), (0, 255, 0), 2)
-        # cv2.putText(frame, str(detection.label_id[0]) + ":" + str(round(detection.score[0], 3)),
-        #     (int(bbox.xmin), int(bbox.ymin) - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
         
         x0 = int(bbox.xmin)
         x1 = int(bbox.xmin)+int(bbox.width)
@@ -138,25 +136,27 @@ def crop_box_face(frame, detection):
     
 def stream():
     mp_facedetector = mp.solutions.face_detection
-    mp_draw = mp.solutions.drawing_utils
     
     fps_new_frame = 0
     fps_prev_frame = 0
+    frames = 0
     
     cosine_threshold = 0.8
     proba_threshold = 0.85
     comparing_num = 5
     frame_count = 0
+    
+    trackers = []
     texts = []
     fake_ckeck = []
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
     
-    with mp_facedetector.FaceDetection(min_detection_confidence=0.8) as face_detection:
+    with mp_facedetector.FaceDetection(min_detection_confidence=0.6) as face_detection:
         while cap.isOpened():
             _, frame = cap.read()
-            
+            frames += 1
             # Fps caculating
             fps_new_frame = time.time()
             
@@ -166,65 +166,94 @@ def stream():
                 print(">> Order received, save 10 frame to datasets/unlabel/unknow")
                 _thread.start_new_thread(import_label_and_move_to_train_dir, ())
             
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = face_detection.process(frame)
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            
-            if results.detections is not None:
-                for id, detection in enumerate(results.detections):
-                    result = crop_box_face(frame, detection)
-                    
-                    if result is not None:
-                        cropped, start_bbox_point, end_bbox_point = result
-                        if frame_count > 10:
-                            frame_count = 0
-                        if frame_count != 0:
-                            _thread.start_new_thread(check_and_save_image, (cropped, ))
-                            frame_count += 1
-                            
-                        nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-                        nimg = np.transpose(nimg, (2,0,1))
-                        embedding = embedding_model.get_feature(nimg).reshape(1,-1)
+            if frames%3 == 0:
+                trackers = []
+                texts = []
+                fake_ckeck = []
+
+                # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = face_detection.process(frame)
+                # frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                
+                if results.detections is not None:
+                    for id, detection in enumerate(results.detections):
+                        result = crop_box_face(frame, detection)
                         
-                        text = ""
-            
-                        # anti_sproofing_start = time.time()            #TIME
-                        # fake, score = anti_sproofing(cropped, None)
-                        # anti_sproofing_end = time.time()              #TIME
-                        # print("Anti sproffing time cost:", anti_sproofing_end-anti_sproofing_start)
-                        
-                        fake, score = None, None
-                        if fake:
-                            text = "Fake face " + str(round(score, 2))
-                            fake_ckeck.append(True)
-                            texts.append(text)
-                        else:    
-                            # Predict class
-                            preds = model.predict(embedding)
-                            preds = preds.flatten()
-                            # Get the highest accuracy embedded vector
-                            j = np.argmax(preds)
-                            proba = preds[j]
-                            # Compare this vector to source class vectors to verify it is actual belong to this class
-                            match_class_idx = (labels == j)
-                            match_class_idx = np.where(match_class_idx)[0]
-                            selected_idx = np.random.choice(match_class_idx, comparing_num)
-                            compare_embeddings = embeddings[selected_idx]
-                            # Calculate cosine similarity
-                            cos_similarity = CosineSimilarity(embedding, compare_embeddings)
-                            if cos_similarity < cosine_threshold and proba > proba_threshold:
-                                name = le.classes_[j]
-                                text = "{}".format(name)
+                        if result is not None:
+                            cropped, start_bbox_point, end_bbox_point = result
+                            if frame_count > 10:
+                                frame_count = 0
+                            if frame_count != 0:
+                                _thread.start_new_thread(check_and_save_image, (cropped, ))
+                                frame_count += 1
                                 
+                            nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+                            nimg = np.transpose(nimg, (2,0,1))
+                            embedding = embedding_model.get_feature(nimg).reshape(1,-1)
+                            
+                            text = ""
+
+                            anti_sproofing_start = time.time()            #TIME
+                            fake, score = anti_sproofing(cropped, None)
+                            anti_sproofing_end = time.time()              #TIME
+                            print("Anti sproffing time cost:", anti_sproofing_end-anti_sproofing_start)
+                            
+                            fake, score = None, None
+                            if fake:
+                                text = "Fake face " + str(round(score, 2))
+                                fake_ckeck.append(True)
+                                texts.append(text)
+                            else:
+                                # Predict class
+                                preds = model.predict(embedding)
+                                preds = preds.flatten()
+                                # Get the highest accuracy embedded vector
+                                j = np.argmax(preds)
+                                proba = preds[j]
+                                # Compare this vector to source class vectors to verify it is actual belong to this class
+                                match_class_idx = (labels == j)
+                                match_class_idx = np.where(match_class_idx)[0]
+                                selected_idx = np.random.choice(match_class_idx, comparing_num)
+                                compare_embeddings = embeddings[selected_idx]
+                                # Calculate cosine similarity
+                                cos_similarity = CosineSimilarity(embedding, compare_embeddings)
+                                if cos_similarity < cosine_threshold and proba > proba_threshold:
+                                    name = le.classes_[j]
+                                    text = "{}".format(name)
+                                
+                            # Start tracking
+                            tracker = dlib.correlation_tracker()
+                            rect = dlib.rectangle(start_bbox_point[0], start_bbox_point[1], end_bbox_point[0], end_bbox_point[1])
+                            tracker.start_track(frame, rect)
+                            trackers.append(tracker)
+                            texts.append(text)
+                            fake_ckeck.append(False)
+                            
                             if fake:
                                 cv2.rectangle(frame, start_bbox_point, end_bbox_point, (0, 0, 255), 2)
                                 cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
                             else:
                                 cv2.rectangle(frame, start_bbox_point, end_bbox_point, (255,255,255), 2)
                                 cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
-                                # cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
                             break
                             
+            else:
+                for tracker, text, fake_ in zip(trackers,texts,fake_ckeck):
+                    pos = tracker.get_position()
+
+                    # unpack the position object
+                    startX = int(pos.left())
+                    startY = int(pos.top())
+                    endX = int(pos.right())
+                    endY = int(pos.bottom())
+                    
+                    if fake_ is True:
+                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0,0,255), 1)
+                        cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
+                    else:
+                        cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
+                        cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                        
             # Calulate fps
             fps = 1/(fps_new_frame - fps_prev_frame)
             fps_prev_frame = fps_new_frame

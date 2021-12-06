@@ -130,9 +130,6 @@ def stream():
     fps_prev_frame = 0
     fps_new_frame = 0
     
-    mp_facedetector = mp.solutions.face_detection
-    mp_draw = mp.solutions.drawing_utils
-    
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
     frame_count = 0
@@ -172,6 +169,7 @@ def stream():
                     bbox = list(map(int,bboxe.tolist()))
                     bbox_check = bbox
                     bbox = np.array([bbox[0], bbox[1], bbox[2], bbox[3]])
+                    
                     landmarks = landmark
                     landmarks = np.array([landmarks[0][0], landmarks[1][0], landmarks[2][0], landmarks[3][0], landmarks[4][0],
                                         landmarks[0][1], landmarks[1][1], landmarks[2][1], landmarks[3][1], landmarks[4][1]])
@@ -196,9 +194,10 @@ def stream():
                     text = ""
                     
                     # anti_sproofing_start = time.time()            #TIME
-                    fake, score = anti_sproofing(frame, bbox_check)
+                    # fake, score = anti_sproofing(frame, bbox_check)
                     # anti_sproofing_end = time.time()              #TIME
                     # print("Anti sproffing time cost:", anti_sproofing_end-anti_sproofing_start)
+                    fake, score = False, 0
                     if fake:
                         text = "Fake face " + str(round(score, 2))
                         fake_ckeck.append(True)
@@ -256,10 +255,10 @@ def stream():
                 endY = int(pos.bottom())
                 
                 if fake_ is True:
-                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0,0,255), 1)
-                    cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 1)
+                    cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
                 else:
-                    cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255, 255), 1)
                     cv2.putText(frame, text, (startX, startY - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
         
         # Calulate fps

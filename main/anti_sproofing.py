@@ -8,6 +8,7 @@
 import os
 import numpy as np
 import time
+import cv2
 
 from src.anti_spoof_predict import AntiSpoofPredict
 from src.generate_patches import CropImage
@@ -17,16 +18,24 @@ import warnings
 warnings.filterwarnings('ignore')
 
 gpu_id = 0
-model_test = AntiSpoofPredict(gpu_id)
+model_testv1 = AntiSpoofPredict(gpu_id)
+model_testv2 = AntiSpoofPredict(gpu_id)
+model_testv1._load_model("./resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth")
+model_testv2._load_model("./resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth")
+
 image_cropper = CropImage()
 
-def anti_sproofing(img, image_bbox, model_dir="./resources/anti_spoof_models"):
+def anti_sproofing(img, image_bbox=None, model_dir="./resources/anti_spoof_models"):
     if image_bbox is None:
+        img = cv2.resize(img, (80, 80))
         prediction = np.zeros((1, 3))
-        for model_name in os.listdir(model_dir):
-            prediction += model_test.predict(img, os.path.join(model_dir, model_name))
         
-        # draw result of prediction
+        prediction += model_testv1.predict(img)
+        prediction += model_testv2.predict(img)
+        # end = time.time()
+        # print("Time cost predict:", end-start)
+        
+        # Draw result of prediction
         label = np.argmax(prediction)
         score = prediction[0][label]/2
         
@@ -36,19 +45,12 @@ def anti_sproofing(img, image_bbox, model_dir="./resources/anti_spoof_models"):
             return False, score # Image 'frame' is Fake Face. Score: 0.82.  color = (0, 0, 255)
             
     else:
-        # start = time.time()
-        # try:
-        #     image_bbox = model_test.get_bbox(img)
-        #     print("anti_sproofing(), image_bbox:", image_bbox)
-        #     exit()
-        # except AttributeError as E:
-        #     print(E)
-        #     print("Image is None, check input image and try again!")
-        
         prediction = np.zeros((1, 3))
         # sum the prediction from single model's result
         for model_name in os.listdir(model_dir):
             h_input, w_input, _, scale = parse_model_name(model_name)
+            info = model_name.split('_')[0:-1]
+            scale = float(info[0])
             param = {
                 "org_img": img,
                 "bbox": image_bbox,
@@ -61,9 +63,11 @@ def anti_sproofing(img, image_bbox, model_dir="./resources/anti_spoof_models"):
                 param["crop"] = False
             # Crop for predict anti sproofinf
             crop_img = image_cropper.crop(**param)
-            prediction += model_test.predict(crop_img, os.path.join(model_dir, model_name))
             
-        # draw result of prediction
+        prediction += model_testv1.predict(crop_img)
+        prediction += model_testv2.predict(crop_img)
+            
+        # Draw result of prediction
         label = np.argmax(prediction)
         score = prediction[0][label]/2
         
@@ -74,8 +78,6 @@ def anti_sproofing(img, image_bbox, model_dir="./resources/anti_spoof_models"):
             # Image 'frame' is Fake Face. Score: 0.82.  color = (0, 0, 255)
             return False, score
 
-# img = cv2.imread("image2.jpg")
-# start = time.time()
-# print("Image is fake:", anti_sproofing(img))
-# end = time.time()
-# print("Time cost:", end-start)
+# Run an sample image to load model
+img = cv2.imread("datasets/temp.jpg")
+anti_sproofing(img)
