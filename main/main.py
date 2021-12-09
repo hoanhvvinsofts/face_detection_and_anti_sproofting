@@ -1,5 +1,7 @@
-from anti_sproofing import anti_sproofing
+# from anti_sproofing import anti_sproofing
 from tensorflow.keras.models import load_model
+from faces_embedding import faces_embedding
+from train_softmax import train_softmax
 
 import mediapipe as mp
 import numpy as np
@@ -45,7 +47,6 @@ ap.add_argument('--threshold', default=1.24, type=float, help='ver dist threshol
 args = ap.parse_args()
 embedding_model = face_model.FaceModel(args)
 model = load_model(args.mymodel)
-
 data = pickle.loads(open(args.embeddings, "rb").read())
 le = pickle.loads(open(args.le, "rb").read())
 embeddings = np.array(data['embeddings'])
@@ -72,7 +73,8 @@ def CosineSimilarity(test_vec, source_vecs):
         cos_dist += findCosineDistance(test_vec, source_vec)
     return cos_dist/len(source_vecs)
 
-def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown"):
+def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
+    global model
     shutil.rmtree(unknow_folder, ignore_errors=True)
     if not os.path.exists(unknow_folder):
         os.makedirs(unknow_folder)
@@ -80,7 +82,7 @@ def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown")
     input_frame = input(">> Input label name: ")
     target_folder = "datasets/train/" + input_frame
     if os.path.isdir(target_folder):
-        print("This label has already exist, try other label.")
+        print("This label has already exist, saved frames are not move to train folder! Try other label!")
     else:
         os.makedirs(target_folder)
         for img_path in os.listdir(unknow_folder):
@@ -89,8 +91,20 @@ def import_label_and_move_to_train_dir(unknow_folder="datasets/unlabel/unknown")
             try:
                 os.rename(src, dst)
             except FileExistsError:
-                print("WARNING: Duplicate file inside folder: ", target_folder)
+                print("WARNING: Duplicate file. Force overwrite file:", dst)
+                os.remove(dst)
+                os.rename(src, dst)
                 pass
+            
+        print(">> New label add to Train data!")
+        print(">> Start training. . .")
+        print(">> 1 - Embedding faces. . .")
+        faces_embedding()
+        print(">> 2 - Training new model. . .")
+        train_softmax()
+        print(">> 3 - Reloading new model. . .")
+        model = load_model("src/outputs/my_model.h5")
+        print(">> Loaded new model, new faces can now recognizable!")
 
 def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
     if not os.path.exists(folder):
@@ -103,7 +117,7 @@ def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
             count_path += 1
         else:
             cv2.imwrite(frame_file, nimg)
-            print("Save image sucessful", frame_file)
+            print("   Save image sucessful:", frame_file)
             break
 
 def crop_box_face(frame, detection):
@@ -111,30 +125,34 @@ def crop_box_face(frame, detection):
     
     bbox = detection.location_data.relative_bounding_box
     if bbox is not None:
-        bbox.xmin = int(bbox.xmin * image_width)
-        bbox.ymin = int(bbox.ymin * image_height)
-        bbox.width = int(bbox.width * image_width)
-        bbox.height = int(bbox.height * image_height)
+        bbox.xmin = bbox.xmin * image_width
+        bbox.ymin = bbox.ymin * image_height
+        bbox.width = bbox.width * image_width
+        bbox.height = bbox.height * image_height
         
         x0 = int(bbox.xmin)
-        x1 = int(bbox.xmin)+int(bbox.width)
+        x1 = int((bbox.xmin)+(bbox.width))
         y0 = int(bbox.ymin)
-        y1 = int(bbox.ymin)+int(bbox.height)
-        x = int(abs(x1-x0))
-        y = int(abs(y1-y0))
-        y_expand = int(abs(y)/6.5)
-        x_expand = int((y+2*y_expand - x )/2)
+        y1 = int((bbox.ymin)+(bbox.height))
+        x = abs(x1-x0)
+        y = abs(y1-y0)
+        y_expand = int(y/6)
+        x_expand = int(x/6)
         
-        cropped = frame[y0-y_expand:y1+y_expand, x0-x_expand:x1+x_expand]
+        x0, x1, y0, y1 = int(x0-x_expand), int(x1+x_expand), int(y0-y_expand*2), int(y1)
+        cropped = frame[y0:y1, x0:x1]
+        
         width, height, _ = cropped.shape
         if width != 0 and height != 0:
             ratio = width/height
             if ratio > 0.98 and ratio < 1.02:
                 cropped = cv2.resize(cropped, (112, 112))
-                # return cropped
-                return cropped, (int(bbox.xmin), int(bbox.ymin)), (int(bbox.xmin + bbox.width), int(bbox.ymin + bbox.height))
-    
+                
+                # return cropped, (int(bbox.xmin), int(bbox.ymin)), (int(bbox.xmin + bbox.width), int(bbox.ymin + bbox.height))
+                return cropped, (x0, y0), (x1, y1)
+
 def stream():
+    global model
     mp_facedetector = mp.solutions.face_detection
     
     fps_new_frame = 0
@@ -152,6 +170,7 @@ def stream():
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
+    # cap = cv2.VideoCapture("facenliveness.mp4")
     
     with mp_facedetector.FaceDetection(min_detection_confidence=0.6) as face_detection:
         while cap.isOpened():
@@ -161,22 +180,20 @@ def stream():
             fps_new_frame = time.time()
             
             # Save 5 frame if press "a" button
-            if cv2.waitKey(33) == ord('a'):
+            if cv2.waitKey(1) == ord('a'):
                 frame_count = 1
                 print(">> Order received, save 10 frame to datasets/unlabel/unknow")
-                _thread.start_new_thread(import_label_and_move_to_train_dir, ())
+                _thread.start_new_thread(import_label_and_train, ())
             
             if frames%3 == 0:
+                frames = 0
                 trackers = []
                 texts = []
                 fake_ckeck = []
-
-                # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = face_detection.process(frame)
-                # frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 
+                results = face_detection.process(frame)
                 if results.detections is not None:
-                    for id, detection in enumerate(results.detections):
+                    for detection in results.detections:
                         result = crop_box_face(frame, detection)
                         
                         if result is not None:
@@ -187,23 +204,20 @@ def stream():
                                 _thread.start_new_thread(check_and_save_image, (cropped, ))
                                 frame_count += 1
                                 
-                            nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-                            nimg = np.transpose(nimg, (2,0,1))
-                            embedding = embedding_model.get_feature(nimg).reshape(1,-1)
-                            
                             text = ""
 
-                            anti_sproofing_start = time.time()            #TIME
-                            fake, score = anti_sproofing(cropped, None)
-                            anti_sproofing_end = time.time()              #TIME
-                            print("Anti sproffing time cost:", anti_sproofing_end-anti_sproofing_start)
-                            
-                            fake, score = None, None
+                            # fake, score = anti_sproofing(cropped, None)
+                            fake, score = None, 0
                             if fake:
                                 text = "Fake face " + str(round(score, 2))
                                 fake_ckeck.append(True)
                                 texts.append(text)
                             else:
+                                # nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+                                nimg = cropped
+                                nimg = np.transpose(nimg, (2,0,1))
+                                
+                                embedding = embedding_model.get_feature(nimg).reshape(1,-1)
                                 # Predict class
                                 preds = model.predict(embedding)
                                 preds = preds.flatten()
@@ -218,8 +232,8 @@ def stream():
                                 # Calculate cosine similarity
                                 cos_similarity = CosineSimilarity(embedding, compare_embeddings)
                                 if cos_similarity < cosine_threshold and proba > proba_threshold:
-                                    name = le.classes_[j]
-                                    text = "{}".format(name)
+                                    text = le.classes_[j]
+                                    # text = "{}".format(name)
                                 
                             # Start tracking
                             tracker = dlib.correlation_tracker()
@@ -259,8 +273,9 @@ def stream():
             fps_prev_frame = fps_new_frame
             cv2.putText(frame, str(round(fps, 2)), (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             cv2.imshow("Frame", frame)  
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
+            
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-
+            
+            
 stream()

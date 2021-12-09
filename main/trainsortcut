@@ -1,2 +1,2 @@
-python faces_embedding.py
-python train_softmax.py
+python faces_embedding2.py
+python train_softmax2.py

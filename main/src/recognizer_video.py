@@ -169,10 +169,7 @@ while True:
 
     cv2.imshow("Frame", frame)
     video_out.write(frame)
-    # print("Faces detection time: {}s".format(detect_tock-detect_tick))
-    # print("Faces recognition time: {}s".format(reco_tock-reco_tick))
     key = cv2.waitKey(1) & 0xFF
-
     if key == ord("q"):
         break
 

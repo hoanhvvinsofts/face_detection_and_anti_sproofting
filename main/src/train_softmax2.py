@@ -14,7 +14,7 @@ ap = argparse.ArgumentParser()
 
 ap.add_argument("--embeddings", default="outputs/embeddings.pickle",
                 help="path to serialized db of facial embeddings")
-ap.add_argument("--model", default="outputs/my_model.h5",
+ap.add_argument("--model", default="outputs/model_updated.h5",
                 help="path to output trained model")
 ap.add_argument("--le", default="outputs/le.pickle",
                 help="path to output label encoder")

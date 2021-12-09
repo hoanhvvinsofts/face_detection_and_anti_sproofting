@@ -25,9 +25,6 @@ args = vars(ap.parse_args())
 data = pickle.loads(open(args["embeddings"], "rb").read())
 
 # Encode the labels
-import time
-start = time.time()
-
 le = LabelEncoder()
 labels = le.fit_transform(data["names"])
 num_classes = len(np.unique(labels))
@@ -74,25 +71,3 @@ model.save(args['model'])
 f = open(args["le"], "wb")
 f.write(pickle.dumps(le))
 f.close()
-
-# # Plot
-# plt.figure(1)
-# # Summary history for accuracy
-# plt.subplot(211)
-# plt.plot(history['acc'])
-# plt.plot(history['val_acc'])
-# plt.title('model accuracy')
-# plt.ylabel('accuracy')
-# plt.xlabel('epoch')
-# plt.legend(['train', 'test'], loc='upper left')
-
-# # Summary history for loss
-# plt.subplot(212)
-# plt.plot(history['loss'])
-# plt.plot(history['val_loss'])
-# plt.title('model loss')
-# plt.ylabel('loss')
-# plt.xlabel('epochs')
-# plt.legend(['train', 'test'], loc='upper left')
-# plt.savefig('outputs/accuracy_loss.png')
-# plt.show()

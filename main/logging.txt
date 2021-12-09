@@ -1,2 +1,0 @@
-INFO:root:[Errno 2] No such file or directory: 'outputs/embeddings.pickle'
-INFO:root:[Errno 2] No such file or directory: 'outputs/embeddings.pickle'

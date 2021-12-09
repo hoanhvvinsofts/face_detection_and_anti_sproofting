@@ -1,34 +1,37 @@
-from re import I
-from keras.models import load_model
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.losses import categorical_crossentropy
+import sys
+import argparse
+sys.path.append('insightface/deploy')
+sys.path.append('insightface/src/common')
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--dataset", default="datasets/train",
+                help="Path to training dataset")
+ap.add_argument("--embeddings", default="outputs/embeddings.pickle")
+# Argument of insightface
+ap.add_argument('--image-size', default='112,112', help='')
+ap.add_argument('--model', default='insightface/models/model-y1-test2/model,0', help='path to load model.')
+ap.add_argument('--ga-model', default='', help='path to load model.')
+ap.add_argument('--gpu', default=0, type=int, help='gpu id')
+ap.add_argument('--det', default=0, type=int, help='mtcnn option, 1 means using R+O, 0 means detect from begining')
+ap.add_argument('--flip', default=0, type=int, help='whether do lr flip aug')
+ap.add_argument('--threshold', default=1.24, type=float, help='ver dist threshold')
+args = ap.parse_args()
+
+import face_model
+from kerassurgeon.operations import replace_layer
+from tensorflow.keras.losses import categorical_crossentropy
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.models import load_model
+from tensorflow.keras.optimizers import Adam
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import KFold
-from tensorflow.keras.optimizers import Adam
-
-from .get_faces_from_video import get_faces_from_video
-from .faces_embedding import embedding_for_increment, embedding_all
-from .train_softmax import train
-
-import matplotlib.pyplot as plt
+from imutils import paths
 import numpy as np
-import cv2
-import os
+import pandas as pd
 import pickle
-import argparse
-import sys
-
-sys.path.append("..")
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--model", default="outputs/my_model.h5",
-                help="path to output trained model")
-ap.add_argument("--le", default="outputs/le.pickle",
-                help="path to output label encoder")
-
-args = vars(ap.parse_args())
+import os
+import cv2
 
 def load_label_and_embedding(embedding_path):
     # Load the face embeddings
@@ -44,36 +47,31 @@ def load_label_and_embedding(embedding_path):
     embeddings = np.array(data["embeddings"])
     
     return labels, embeddings, num_classes
-    
-def edit_model_for_increment(num_label, model_path="outputs/my_model.h5"):
-    # Load previous model and edit the layers
-    old_model = load_model(model_path)
-    model = Sequential()
 
-    for layer in old_model.layers[:-1]:
-        layer.trainable = True
-        model.add(layer)
+def train():
+    # Load embedding and return values
+    embedding_path = "src/outputs/embeddings.pickle"
+    labels, embeddings, num_classes = load_label_and_embedding(embedding_path)
 
-    model.add(Dense(num_label, activation='softmax', name="output_layer"))
-    print(model.summary())
-    return model
+    # Load model and change layers
+    mymodel = "src/outputs/my_model.h5"
+    model = load_model(mymodel)
 
-def train_new_model(model, labels, embeddings):
-    # Initialize Softmax training model arguments
+    weight = model.get_weights()
+    output_layer = Dense(num_classes, activation='softmax', name="output_layer")
+    model = replace_layer(model, model.layers[-1], output_layer)
+
+    # Retrain/Continue training with new data
     BATCH_SIZE = 32
     EPOCHS = 20
-    input_shape = embeddings.shape[1]
-    
-    cv = KFold(n_splits = 5, random_state = 42, shuffle=True)
     history = {'acc': [], 'val_acc': [], 'loss': [], 'val_loss': []}
-    
-    # model = model.build()
 
     optimizer = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
     model.compile(loss=categorical_crossentropy,
                     optimizer=optimizer,
                     metrics=['accuracy'])
-    
+
+    cv = KFold(n_splits = 5, random_state = 42, shuffle=True)
     for train_idx, valid_idx in cv.split(embeddings):
         X_train, X_val, y_train, y_val = embeddings[train_idx], embeddings[valid_idx], labels[train_idx], labels[valid_idx]
         his = model.fit(X_train, y_train,
@@ -89,61 +87,29 @@ def train_new_model(model, labels, embeddings):
             print(his.history['accuracy'])
             history['acc'] += his.history['accuracy']
             history['val_acc'] += his.history['val_accuracy']
-            
-        history['loss'] += his.history['loss']
-        history['val_loss'] += his.history['val_loss']
 
-    # write the face recognition model to output
-    model.save(args['model'])
-    # f = open(args["le"], "wb")
-    # f.write(pickle.dumps(le))
-    # f.close()
-
-    # Plot
-    plt.figure(1)
-    # Summary history for accuracy
-    plt.subplot(211)
-    plt.plot(history['acc'])
-    plt.plot(history['val_acc'])
-    plt.title('model accuracy')
-    plt.ylabel('accuracy')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-
-    # Summary history for loss
-    plt.subplot(212)
-    plt.plot(history['loss'])
-    plt.plot(history['val_loss'])
-    plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epochs')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig('outputs/accuracy_loss.png')
-    plt.show()
-
-def main(video_input_path, label_name):
-    # 1ST STEP: GET FACE DATA FROM VIDEO
-    output_frames_folder = "datasets/train/" + str(label_name)
-    # Attention: The name of output_frames_folder is using for label's name
-    get_faces_from_video(video_input=video_input_path,
-                        output_frames_folder=output_frames_folder)
-    embedding_all()
-    train()
+def embedding_new_face(output_frames_folder, embedding_model, embeddings_picke_path=r"embeddings.pickle"):
+    label = os.path.split(output_frames_folder)[-1]
+    imagePaths = list(paths.list_images(output_frames_folder))
+    embedding = pd.read_pickle(embeddings_picke_path)
     
-'''
-    # 2ND STEP: Load and edit embedding file
-    embedding_path = embedding_for_increment(output_frames_folder, embedding_path="src/outputs/embeddings.pickle")
+    # Loop over the imagePaths
+    for (i, imagePath) in enumerate(imagePaths):
 
-    # 3RD STEP: Get label and embedding
-    labels, embeddings, num_classes = load_label_and_embedding(embedding_path)
-    print("Number of classes:", num_classes)
-    # 4TH STEP: Edit availabled model
-    model = edit_model_for_increment(num_classes, model_path="src/outputs/my_model.h5")
+        # load the image
+        image = cv2.imread(imagePath)
+        # convert face to RGB color
+        nimg = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        nimg = np.transpose(nimg, (2,0,1))
+        # Get the face embedding vector
+        face_embedding = embedding_model.get_feature(nimg)
+        
+        embedding["names"].append(label)
+        embedding["embeddings"].append(face_embedding)
+    f = open(embeddings_picke_path, "wb")
+    f.write(pickle.dumps(embedding))
+    return embedding
 
-    # 5TH STEP: Increment training with new data and label
-    train_new_model(model, labels, embeddings)
-    print(">> New model trained sucessfully!")
-    
-    # 6TH STEP: Test with recognize_image/stream/video.py
-'''
-# main("E:/Timekeeping/Face Recognition with InsightFace/datasets/videos_input/hang.mp4", "Hang")
+embeddings_picke_path=r"embeddings.pickle"
+embedding = pd.read_pickle(embeddings_picke_path)
+print(embedding["names"])

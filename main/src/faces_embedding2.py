@@ -52,8 +52,7 @@ for (i, imagePath) in enumerate(imagePaths):
     nimg = np.transpose(nimg, (2,0,1))
     # Get the face embedding vector
     face_embedding = embedding_model.get_feature(nimg)
-    print("face_embedding", face_embedding)
-    exit()
+    
     # add the name of the person + corresponding face
     # embedding to their respective list
     knownNames.append(name)
