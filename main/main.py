@@ -75,8 +75,12 @@ def CosineSimilarity(test_vec, source_vecs):
 
 def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
     global model
+    global data
+    global le
+    global embeddings
+    global labels
     shutil.rmtree(unknow_folder, ignore_errors=True)
-    if not os.path.exists(unknow_folder):
+    if os.path.exists(unknow_folder) is False:
         os.makedirs(unknow_folder)
     time.sleep(2.5)
     input_frame = input(">> Input label name: ")
@@ -104,6 +108,10 @@ def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
         train_softmax()
         print(">> 3 - Reloading new model. . .")
         model = load_model("src/outputs/my_model.h5")
+        data = pickle.loads(open(args.embeddings, "rb").read())
+        le = pickle.loads(open(args.le, "rb").read())
+        embeddings = np.array(data['embeddings'])
+        labels = le.fit_transform(data['names'])
         print(">> Loaded new model, new faces can now recognizable!")
 
 def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
@@ -152,7 +160,6 @@ def crop_box_face(frame, detection):
                 return cropped, (x0, y0), (x1, y1)
 
 def stream():
-    global model
     mp_facedetector = mp.solutions.face_detection
     
     fps_new_frame = 0
