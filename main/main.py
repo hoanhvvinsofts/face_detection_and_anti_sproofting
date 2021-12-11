@@ -1,4 +1,4 @@
-# from anti_sproofing import anti_sproofing
+from anti_spoofing import anti_spoofing
 from tensorflow.keras.models import load_model
 from faces_embedding import faces_embedding
 from train_softmax import train_softmax
@@ -51,6 +51,13 @@ data = pickle.loads(open(args.embeddings, "rb").read())
 le = pickle.loads(open(args.le, "rb").read())
 embeddings = np.array(data['embeddings'])
 labels = le.fit_transform(data['names'])
+
+from src.anti_spoof_predict import AntiSpoofPredict
+gpu_id = 0
+model_testv1 = AntiSpoofPredict(gpu_id)
+model_testv2 = AntiSpoofPredict(gpu_id)
+model_testv1._load_model("resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth")
+model_testv2._load_model("resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth")
 
 def findCosineDistance(vector1, vector2):
     """
@@ -213,8 +220,8 @@ def stream():
                                 
                             text = ""
 
-                            # fake, score = anti_sproofing(cropped, None)
-                            fake, score = None, 0
+                            fake, score = anti_spoofing(cropped)
+                            # fake, score = None, 0
                             if fake:
                                 text = "Fake face " + str(round(score, 2))
                                 fake_ckeck.append(True)

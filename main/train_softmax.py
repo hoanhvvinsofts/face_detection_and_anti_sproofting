@@ -1,10 +1,7 @@
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import KFold
-from tensorflow.keras.models import load_model
-from sklearn.svm import SVC
 from src.softmax import SoftMax
-import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import pickle
@@ -26,10 +23,6 @@ args = vars(ap.parse_args())
 def train_softmax():
     # Load the face embeddings
     data = pickle.loads(open(args["embeddings"], "rb").read())
-
-    # Encode the labels
-    import time
-    start = time.time()
 
     le = LabelEncoder()
     labels = le.fit_transform(data["names"])
