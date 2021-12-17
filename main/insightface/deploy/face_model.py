@@ -52,7 +52,7 @@ class FaceModel:
       self.model = get_model(ctx, image_size, args.model, 'fc1')
     if len(args.ga_model)>0:
       self.ga_model = get_model(ctx, image_size, args.ga_model, 'fc1')
-
+    
     self.threshold = args.threshold
     self.det_minsize = 50
     self.det_threshold = [0.6,0.7,0.8]

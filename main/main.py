@@ -1,7 +1,6 @@
 from anti_spoofing import anti_spoofing
-from tensorflow.keras.models import load_model
 from faces_embedding import faces_embedding
-from train_softmax import train_softmax
+from train_model import train_softmax, train_svm
 
 import mediapipe as mp
 import numpy as np
@@ -46,7 +45,13 @@ ap.add_argument('--flip', default=0, type=int, help='whether do lr flip aug')
 ap.add_argument('--threshold', default=1.24, type=float, help='ver dist threshold')
 args = ap.parse_args()
 embedding_model = face_model.FaceModel(args)
-model = load_model(args.mymodel)
+
+# Load Softmax model
+# model = load_model(args.mymodel)
+# Load SVM model
+with open('src/outputs/model.pkl', 'rb') as f:
+    model = pickle.load(f)
+
 data = pickle.loads(open(args.embeddings, "rb").read())
 le = pickle.loads(open(args.le, "rb").read())
 embeddings = np.array(data['embeddings'])
@@ -112,9 +117,11 @@ def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
         print(">> 1 - Embedding faces. . .")
         faces_embedding()
         print(">> 2 - Training new model. . .")
-        train_softmax()
+        train_svm()
         print(">> 3 - Reloading new model. . .")
-        model = load_model("src/outputs/my_model.h5")
+        with open('src/outputs/model.pkl', 'rb') as f:
+            model = pickle.load(f)
+            
         data = pickle.loads(open(args.embeddings, "rb").read())
         le = pickle.loads(open(args.le, "rb").read())
         embeddings = np.array(data['embeddings'])
@@ -173,8 +180,9 @@ def stream():
     fps_prev_frame = 0
     frames = 0
     
-    cosine_threshold = 0.8
-    proba_threshold = 0.85
+    cosine_threshold = 0.4
+    # proba_threshold = 0.85
+    proba_threshold = 0.08
     comparing_num = 5
     frame_count = 0
     
@@ -184,9 +192,11 @@ def stream():
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     # cap = cv2.VideoCapture("facenliveness.mp4")
     
-    with mp_facedetector.FaceDetection(min_detection_confidence=0.6) as face_detection:
+    with mp_facedetector.FaceDetection(min_detection_confidence=0.3) as face_detection:
         while cap.isOpened():
             _, frame = cap.read()
             frames += 1
@@ -232,10 +242,26 @@ def stream():
                                 nimg = np.transpose(nimg, (2,0,1))
                                 
                                 embedding = embedding_model.get_feature(nimg).reshape(1,-1)
-                                # Predict class
-                                preds = model.predict(embedding)
+                                
+                                # # # Predict class (SOFTMAX MODEL)
+                                # preds = model.predict(embedding)
+                                # preds = preds.flatten()
+                                # # Get the highest accuracy embedded vector
+                                # j = np.argmax(preds)
+                                # proba = preds[j]
+                                # # Compare this vector to source class vectors to verify it is actual belong to this class
+                                # match_class_idx = (labels == j)
+                                # match_class_idx = np.where(match_class_idx)[0]
+                                # selected_idx = np.random.choice(match_class_idx, comparing_num)
+                                # compare_embeddings = embeddings[selected_idx]
+                                # # Calculate cosine similarity
+                                # cos_similarity = CosineSimilarity(embedding, compare_embeddings)
+                                # if cos_similarity < cosine_threshold and proba > proba_threshold:
+                                #     text = le.classes_[j]
+                                
+                                # # Predict class (SVM MODEL)
+                                preds = model.predict_proba(embedding)
                                 preds = preds.flatten()
-                                # Get the highest accuracy embedded vector
                                 j = np.argmax(preds)
                                 proba = preds[j]
                                 # Compare this vector to source class vectors to verify it is actual belong to this class
@@ -247,7 +273,11 @@ def stream():
                                 cos_similarity = CosineSimilarity(embedding, compare_embeddings)
                                 if cos_similarity < cosine_threshold and proba > proba_threshold:
                                     text = le.classes_[j]
-                                    # text = "{}".format(name)
+                                    print(le.classes_[j], round(proba, 3), round(cos_similarity, 3))
+                                # else:
+                                    # text = le.classes_[j]
+                                    
+                                
                                 
                             # Start tracking
                             tracker = dlib.correlation_tracker()
