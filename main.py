@@ -17,43 +17,27 @@ import dlib
 sys.path.append('insightface/deploy')
 sys.path.append('insightface/src/common')
 
+import face_model
+
+image_size = "112,112"
+model = "insightface/models/model-y1-test2/model,0"
+ga_model = ""
+threshold = 1.24
+det = 0
+embedding_model = face_model.FaceModel(image_size, model, ga_model, threshold, det)
+
 mp_facedetector = mp.solutions.face_detection
 mp_draw = mp.solutions.drawing_utils
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-"""
-Argparse for FACE_MODEL:EMBEDDING_MODEL
-"""
-import face_model
-import argparse
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--mymodel", default="src/outputs/my_model.h5",
-    help="Path to recognizer model")
-ap.add_argument("--le", default="src/outputs/le.pickle",
-    help="Path to label encoder")
-ap.add_argument("--embeddings", default="src/outputs/embeddings.pickle",
-    help='Path to embeddings')
-ap.add_argument("--video-out", default="datasets/videos_output/stream_test.mp4",
-    help='Path to output video')
-ap.add_argument('--image-size', default='112,112', help='')
-ap.add_argument('--model', default='insightface/models/model-y1-test2/model,0', help='path to load model.')
-ap.add_argument('--ga-model', default='', help='path to load model.')
-ap.add_argument('--gpu', default=0, type=int, help='gpu id')
-ap.add_argument('--det', default=0, type=int, help='mtcnn option, 1 means using R+O, 0 means detect from begining')
-ap.add_argument('--flip', default=0, type=int, help='whether do lr flip aug')
-ap.add_argument('--threshold', default=1.24, type=float, help='ver dist threshold')
-args = ap.parse_args()
-embedding_model = face_model.FaceModel(args)
-
 # Load SVM model
-with open('src/outputs/model.pkl', 'rb') as f:
+with open("src/outputs/model.pkl", "rb") as f:
     model = pickle.load(f)
 
-data = pickle.loads(open(args.embeddings, "rb").read())
-le = pickle.loads(open(args.le, "rb").read())
-embeddings = np.array(data['embeddings'])
-labels = le.fit_transform(data['names'])
+data = pickle.loads(open("src/outputs/embeddings.pickle", "rb").read())
+le = pickle.loads(open("src/outputs/le.pickle", "rb").read())
+embeddings = np.array(data["embeddings"])
+labels = le.fit_transform(data["names"])
 
 from src.anti_spoof_predict import AntiSpoofPredict
 gpu_id = 0
@@ -117,13 +101,14 @@ def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
         print(">> 2 - Training new model. . .")
         train_svm()
         print(">> 3 - Reloading new model. . .")
-        with open('src/outputs/model.pkl', 'rb') as f:
+        with open("src/outputs/model.pkl", "rb") as f:
             model = pickle.load(f)
             
-        data = pickle.loads(open(args.embeddings, "rb").read())
-        le = pickle.loads(open(args.le, "rb").read())
-        embeddings = np.array(data['embeddings'])
-        labels = le.fit_transform(data['names'])
+        data = pickle.loads(open("src/outputs/embeddings.pickle", "rb").read())
+        le = pickle.loads(open("src/outputs/le.pickle", "rb").read())
+        
+        embeddings = np.array(data["embeddings"])
+        labels = le.fit_transform(data["names"])
         print(">> Loaded new model, new faces can now recognizable!")
 
 def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
@@ -140,7 +125,12 @@ def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
             print("   Save image sucessful:", frame_file)
             break
 
-def crop_box_face(frame, detection):
+def crop_box_face(frame, detection, expand_box_ratio):
+    '''
+    `expand_box_ratio` is using for expanding the bounding box when detected.
+    The bigger `expand_box_ratio` then the expand is smaller.
+    default = 6
+    '''
     image_width, image_height = frame.shape[1], frame.shape[0]
     
     bbox = detection.location_data.relative_bounding_box
@@ -156,8 +146,8 @@ def crop_box_face(frame, detection):
         y1 = int((bbox.ymin)+(bbox.height))
         x = abs(x1-x0)
         y = abs(y1-y0)
-        y_expand = int(y/6)
-        x_expand = int(x/6)
+        y_expand = int(y/expand_box_ratio)
+        x_expand = int(x/expand_box_ratio)
         
         x0, x1, y0, y1 = int(x0-x_expand), int(x1+x_expand), int(y0-y_expand*2), int(y1)
         cropped = frame[y0:y1, x0:x1]
@@ -167,8 +157,7 @@ def crop_box_face(frame, detection):
             ratio = width/height
             if ratio > 0.98 and ratio < 1.02:
                 cropped = cv2.resize(cropped, (112, 112))
-                
-                # return cropped, (int(bbox.xmin), int(bbox.ymin)), (int(bbox.xmin + bbox.width), int(bbox.ymin + bbox.height))
+
                 return cropped, (x0, y0), (x1, y1)
 
 def stream():
@@ -183,15 +172,18 @@ def stream():
     comparing_num = 5
     frame_count = 0
     
+    expand_box_ratio = 6
+    frame_width = 1280
+    frame_height = 720
+    
     trackers = []
     texts = []
     fake_ckeck = []
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    # cap = cv2.VideoCapture("test.mp4")
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
     
     with mp_facedetector.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
         while cap.isOpened():
@@ -215,7 +207,7 @@ def stream():
                 results = face_detection.process(frame)
                 if results.detections is not None:
                     for detection in results.detections:
-                        result = crop_box_face(frame, detection)
+                        result = crop_box_face(frame, detection, expand_box_ratio)
                         
                         if result is not None:
                             cropped, start_bbox_point, end_bbox_point = result
@@ -292,6 +284,5 @@ def stream():
             cv2.imshow("Frame", frame)  
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-            
             
 stream()
