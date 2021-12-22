@@ -1,7 +1,6 @@
-from anti_spoofing import anti_spoofing
-from faces_embedding import add_embedding
-from train_model import train_svm
 
+import pickle
+import dlib
 import mediapipe as mp
 import numpy as np
 import cv2
@@ -10,41 +9,56 @@ import os
 import time
 import shutil
 import _thread
-import sys
-import pickle
-import dlib
+import configparser
+import datetime
 
-sys.path.append('insightface/deploy')
-sys.path.append('insightface/src/common')
+from insightface.deploy import face_model
+from anti_spoofing import anti_spoofing
+from faces_embedding import add_embedding
+from train_model import train_svm
+from database_processing import database_processing
 
-import face_model
+# Init config file
+config = configparser.ConfigParser()
+config.read("config.ini")
 
-image_size = "112,112"
-model = "insightface/models/model-y1-test2/model,0"
-ga_model = ""
-threshold = 1.24
-det = 0
+# Select torch gpu device
+device_id = config["TORCH_DEVICE"]["device"]
+device = torch.device(device_id if torch.cuda.is_available() else 'cpu')
+
+# FaceModel and parameters
+image_size = config["FACEMODEL"]["image_size"]
+model = config["FACEMODEL"]["model"]
+ga_model = config["FACEMODEL"]["ga_model"]
+threshold = float(config["FACEMODEL"]["threshold"])
+det = int(config["FACEMODEL"]["det"])
 embedding_model = face_model.FaceModel(image_size, model, ga_model, threshold, det)
 
-mp_facedetector = mp.solutions.face_detection
-mp_draw = mp.solutions.drawing_utils
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# Load saved embeddings and labels
+embeddings_path = config["EMBEDDINGS_AND_LABELS"]["embeddings_path"]
+labels_path = config["EMBEDDINGS_AND_LABELS"]["labels_path"]
 
-# Load SVM model
-with open("src/outputs/model.pkl", "rb") as f:
-    model = pickle.load(f)
-
-data = pickle.loads(open("src/outputs/embeddings.pickle", "rb").read())
-le = pickle.loads(open("src/outputs/le.pickle", "rb").read())
+data = pickle.loads(open(embeddings_path, "rb").read())
+le = pickle.loads(open(labels_path, "rb").read())
 embeddings = np.array(data["embeddings"])
 labels = le.fit_transform(data["names"])
 
-from src.anti_spoof_predict import AntiSpoofPredict
-gpu_id = 0
-model_testv1 = AntiSpoofPredict(gpu_id)
-model_testv2 = AntiSpoofPredict(gpu_id)
-model_testv1._load_model("resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth")
-model_testv2._load_model("resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth")
+# Init mediapipe detector
+mp_facedetector = mp.solutions.face_detection
+
+# Load SVM model
+svm_path = config["SVM_MODEL"]["svm_path"]
+with open(svm_path, "rb") as f:
+    model = pickle.load(f)
+
+# import_label_and_train variables
+temp_folder = config["SAVE_FRAME"]["temp_folder"]
+train_dataset_path = config["DATASET"]["train_dataset_path"]
+
+# crop_box_face variables
+expand_box_ratio = int(config["CROP_BOX"]["expand_box_ratio"])
+ratio_min = float(config["CROP_BOX"]["ratio_min"])
+ratio_max = float(config["CROP_BOX"]["ratio_max"])
 
 def findCosineDistance(vector1, vector2):
     """
@@ -67,7 +81,7 @@ def CosineSimilarity(test_vec, source_vecs):
         cos_dist += findCosineDistance(test_vec, source_vec)
     return cos_dist/len(source_vecs)
 
-def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
+def import_label_and_train(unknow_folder=temp_folder):
     global model
     global data
     global le
@@ -78,7 +92,7 @@ def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
         os.makedirs(unknow_folder)
     time.sleep(2.5)
     input_frame = input(">> Input label name: ")
-    target_folder = "datasets/train/" + input_frame
+    target_folder = train_dataset_path + "/" + input_frame
     if os.path.isdir(target_folder):
         print("This label has already exist, saved frames are not move to train folder! Try other label!")
     else:
@@ -101,23 +115,23 @@ def import_label_and_train(unknow_folder="datasets/unlabel/unknown"):
         print(">> 2 - Training new model. . .")
         train_svm()
         print(">> 3 - Reloading new model. . .")
-        with open("src/outputs/model.pkl", "rb") as f:
+        with open(svm_path, "rb") as f:
             model = pickle.load(f)
             
-        data = pickle.loads(open("src/outputs/embeddings.pickle", "rb").read())
-        le = pickle.loads(open("src/outputs/le.pickle", "rb").read())
+        data = pickle.loads(open(embeddings_path, "rb").read())
+        le = pickle.loads(open(labels_path, "rb").read())
         
         embeddings = np.array(data["embeddings"])
         labels = le.fit_transform(data["names"])
         print(">> Loaded new model, new faces can now recognizable!")
 
-def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
+def check_and_save_image(nimg, folder=temp_folder):
     if not os.path.exists(folder):
         os.makedirs(folder)
     
     count_path = 0
     while True:
-        frame_file = folder + f"/unknown{count_path}.jpg"
+        frame_file = folder + "/unknown" + str(count_path) + ".jpg"
         if os.path.isfile(frame_file):
             count_path += 1
         else:
@@ -125,7 +139,7 @@ def check_and_save_image(nimg, folder="datasets/unlabel/unknown"):
             print("   Save image sucessful:", frame_file)
             break
 
-def crop_box_face(frame, detection, expand_box_ratio):
+def crop_box_face(frame, detection, expand_box_ratio=expand_box_ratio):
     '''
     `expand_box_ratio` is using for expanding the bounding box when detected.
     The bigger `expand_box_ratio` then the expand is smaller.
@@ -155,50 +169,53 @@ def crop_box_face(frame, detection, expand_box_ratio):
         width, height, _ = cropped.shape
         if width != 0 and height != 0:
             ratio = width/height
-            if ratio > 0.98 and ratio < 1.02:
+            if ratio > ratio_min and ratio < ratio_max:
                 cropped = cv2.resize(cropped, (112, 112))
-
                 return cropped, (x0, y0), (x1, y1)
 
 def stream():
-    mp_facedetector = mp.solutions.face_detection
-    
     fps_new_frame = 0
     fps_prev_frame = 0
     frames = 0
-    
-    cosine_threshold = 0.4
-    proba_threshold = 0.08
-    comparing_num = 5
     frame_count = 0
-    
-    expand_box_ratio = 6
-    frame_width = 1280
-    frame_height = 720
-    
     trackers = []
     texts = []
     fake_ckeck = []
+    
+    cosine_threshold = float(config["THRESHOLD_PREDICT"]["cosine_threshold"])
+    proba_threshold = float(config["THRESHOLD_PREDICT"]["proba_threshold"])
+    comparing_num = int(config["THRESHOLD_PREDICT"]["comparing_num"])
+
+    frame_width = int(config["RESOLUTION_FRAME"]["frame_width"])
+    frame_height = int(config["RESOLUTION_FRAME"]["frame_height"])
+    
+    model_selection = int(config["FACE_DETECTION_MODEL"]["model_selection"])
+    min_detection_confidence = float(config["FACE_DETECTION_MODEL"]["min_detection_confidence"])
+    
+    quit_btn = config["BUTTONS"]["quit"]
+    save_frame_btn = config["BUTTONS"]["save_frame"]
+    save_frame_number = int(config["SAVE_FRAME"]["save_frame_number"])
+    processing_frame_every = int(config["PROCESSING_FRAME_EVERY"]["processing_frame_every"])
     
     # Start streaming and recording
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
     
-    with mp_facedetector.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+    with mp_facedetector.FaceDetection(model_selection=model_selection, min_detection_confidence=min_detection_confidence) as face_detection:
         while cap.isOpened():
             _, frame = cap.read()
             frames += 1
             # Fps caculating
             fps_new_frame = time.time()
             
-            # Save 5 frame if press "a" button
-            if cv2.waitKey(1) == ord('a'):
+            # Save frames if press save_frame_btn button
+            if cv2.waitKey(1) == ord(save_frame_btn):
                 frame_count = 1
-                print(">> Order received, save 10 frame to datasets/unlabel/unknow")
+                print(">> Order received, save" + str(save_frame_number) + " frame to [TEMP_FOLDER]")
                 _thread.start_new_thread(import_label_and_train, ())
-            
-            if frames%3 == 0:
+
+            if frames%processing_frame_every == 0:
                 frames = 0
                 trackers = []
                 texts = []
@@ -208,17 +225,16 @@ def stream():
                 if results.detections is not None:
                     for detection in results.detections:
                         result = crop_box_face(frame, detection, expand_box_ratio)
-                        
                         if result is not None:
                             cropped, start_bbox_point, end_bbox_point = result
-                            if frame_count > 10:
+                            if frame_count > save_frame_number:
                                 frame_count = 0
                             if frame_count != 0:
                                 _thread.start_new_thread(check_and_save_image, (cropped, ))
                                 frame_count += 1
                                 
                             text = ""
-
+                
                             fake, score = anti_spoofing(cropped)
                             if fake:
                                 text = "Fake face " + str(round(score, 2))
@@ -243,7 +259,9 @@ def stream():
                                 cos_similarity = CosineSimilarity(embedding, compare_embeddings)
                                 if cos_similarity < cosine_threshold and proba > proba_threshold:
                                     text = le.classes_[j]
-                                
+                                    recognize_time = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+                                    database_processing(text, recognize_time)
+                                    
                             # Start tracking
                             tracker = dlib.correlation_tracker()
                             rect = dlib.rectangle(start_bbox_point[0], start_bbox_point[1], end_bbox_point[0], end_bbox_point[1])
@@ -282,7 +300,7 @@ def stream():
             fps_prev_frame = fps_new_frame
             cv2.putText(frame, str(round(fps, 2)), (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             cv2.imshow("Frame", frame)  
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            if cv2.waitKey(1) & 0xFF == ord(quit_btn):
                 break
             
 stream()
