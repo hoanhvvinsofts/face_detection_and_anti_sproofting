@@ -2,16 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from scipy import misc
 import sys
 import os
-import argparse
-#import tensorflow as tf
 import numpy as np
 import mxnet as mx
 import cv2
 import sklearn
-from mtcnn_detector import MtcnnDetector
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'common'))
 import face_preprocess
 
@@ -49,13 +45,6 @@ class FaceModel:
     self.det_minsize = 50
     self.det_threshold = [0.6,0.7,0.8]
     self.image_size = image_size
-    mtcnn_path = os.path.join(os.path.dirname(__file__), 'mtcnn-model')
-    if det==0:
-      detector = MtcnnDetector(model_folder=mtcnn_path, ctx=ctx, num_worker=1, accurate_landmark = True, threshold=self.det_threshold)
-    else:
-      detector = MtcnnDetector(model_folder=mtcnn_path, ctx=ctx, num_worker=1, accurate_landmark = True, threshold=[0.0,0.0,0.2])
-    self.detector = detector
-
 
   def get_input(self, face_img):
     ret = self.detector.detect_face(face_img, det_type = self.det)
