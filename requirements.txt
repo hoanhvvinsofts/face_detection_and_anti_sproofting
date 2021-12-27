@@ -1,10 +1,20 @@
-# cmake
-# dlib
-mxnet==1.7.0.post2     
-opencv-python==4.5.4.60
-mediapipe==0.8.9.1     
+annoy==1.17.0
+dlib==19.22.1
+easydict==1.9
+facenet==1.0.5
+Flask==1.1.2
+imutils==0.5.4
+matplotlib==3.5.1
+mediapipe==0.8.9.1
+mxnet==1.7.0.post2
+numpy==1.21.5
+opencv_python==4.5.4.60
+Pillow==8.4.0
+scikit_image==0.19.1
+scikit_learn==1.0.1
+scipy==1.7.3
+six==1.16.0
+skimage==0.0
 tensorflow==2.7.0
-torch
-scikit-learn
-scikit-image
-imutils
+torch==1.10.1
+torchvision==0.11.2

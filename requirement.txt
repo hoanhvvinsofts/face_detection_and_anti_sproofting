@@ -1,0 +1,10 @@
+cmake
+dlib
+mxnet==1.7.0.post2     
+opencv-python
+mediapipe==0.8.9.1     
+tensorflow==2.7.0
+torch
+scikit-learn
+scikit-image
+imutils

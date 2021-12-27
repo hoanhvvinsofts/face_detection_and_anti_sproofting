@@ -12,8 +12,16 @@
 # # Run python script
 # CMD ["python", "main.py"]
 
+# wsl --shutdown
+# docker run -it -d --name CONTAINER --privileged -v /dev/bus/usb:/dev/bus/usb IMAGE
+# docker exec -it CONTAINER /bin/bash
+
 FROM timekeeping
 
-RUN pip install -r requirements.txt
+ADD . .
+
+# RUN pip install -r requirements.txt
+
 
 CMD ["python", "main.py"]
+docker tag timekeeping hoanhvvinsofts/timekeeping

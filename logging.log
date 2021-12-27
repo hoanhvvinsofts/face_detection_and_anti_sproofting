@@ -1,0 +1,7 @@
+2021-12-27 14:09:53::INFO::	anti_spoofing.py::<module>()::28	::Load AntiSpoof v1 model
+2021-12-27 14:09:53::INFO::	anti_spoofing.py::<module>()::32	::Load AntiSpoof v2 model
+2021-12-27 14:09:53::INFO::	anti_spoofing.py::<module>()::54	::Run function one time when initial to load model with datasets/temp.jpg image
+2021-12-27 14:09:55::INFO::	main.py::<module>()::30	::PROGRAM STARTED!
+2021-12-27 14:09:55::INFO::	main.py::<module>()::47	::Load Face Embedding model
+2021-12-27 14:09:55::INFO::	main.py::<module>()::75	::Initial all necessary config and files sucessful!
+2021-12-27 14:10:10::WARNING::	main.py::stream()::333	::Camera or video is disabled

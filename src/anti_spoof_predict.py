@@ -25,7 +25,7 @@ class AntiSpoofPredict():
         h_input, w_input, model_type, _ = parse_model_name(model_name)
         self.kernel_size = get_kernel(h_input, w_input,)
         self.model = MODEL_MAPPING[model_type](conv6_kernel=self.kernel_size).to(self.device)
-
+    
         # load model weight
         state_dict = torch.load(model_path, map_location=self.device)
         keys = iter(state_dict)
@@ -50,6 +50,6 @@ class AntiSpoofPredict():
         self.model.eval()
         with torch.no_grad():
             result = self.model.forward(img)
-            result = F.softmax(result).cpu().numpy()
+            result = F.softmax(result, dim = 1).cpu().numpy()
         return result
     

@@ -1,5 +1,5 @@
 from faces_embedding import faces_embedding
-from train_model import train_softmax, train_svm
+from train_model import train_svm
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

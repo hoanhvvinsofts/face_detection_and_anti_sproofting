@@ -11,12 +11,23 @@ import shutil
 import _thread
 import configparser
 import datetime
+import logging
 
 from insightface.deploy import face_model
 from anti_spoofing import anti_spoofing
 from faces_embedding import add_embedding
 from train_model import train_svm
 from database_processing import database_processing
+
+# Init logging
+logging.basicConfig(filename="logging.log", level=logging.INFO, 
+                    format="%(asctime)s::%(levelname)s::\t%(filename)s::%(funcName)s()::%(lineno)d\t::%(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
+
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+logging.getLogger("logging.log").addHandler(console)
+logging.info("PROGRAM STARTED!")
 
 # Init config file
 config = configparser.ConfigParser()
@@ -33,6 +44,7 @@ ga_model = config["FACEMODEL"]["ga_model"]
 threshold = float(config["FACEMODEL"]["threshold"])
 det = int(config["FACEMODEL"]["det"])
 embedding_model = face_model.FaceModel(image_size, model, ga_model, threshold, det)
+logging.info("Load Face Embedding model")
 
 # Load saved embeddings and labels
 embeddings_path = config["EMBEDDINGS_AND_LABELS"]["embeddings_path"]
@@ -59,6 +71,8 @@ train_dataset_path = config["DATASET"]["train_dataset_path"]
 expand_box_ratio = int(config["CROP_BOX"]["expand_box_ratio"])
 ratio_min = float(config["CROP_BOX"]["ratio_min"])
 ratio_max = float(config["CROP_BOX"]["ratio_max"])
+
+logging.info("Initial all necessary config and files sucessful!")
 
 def findCosineDistance(vector1, vector2):
     """
@@ -92,9 +106,11 @@ def import_label_and_train(unknow_folder=temp_folder):
         os.makedirs(unknow_folder)
     time.sleep(2.5)
     input_frame = input(">> Input label name: ")
+    logging.info("Enter a new person: " + str(input_frame))
     target_folder = train_dataset_path + "/" + input_frame
     if os.path.isdir(target_folder):
-        print("This label has already exist, saved frames are not move to train folder! Try other label!")
+        logging.error("This label has already exist, saved frames are not move to train folder! Try other label!")
+        # print("This label has already exist, saved frames are not move to train folder! Try other label!")
     else:
         os.makedirs(target_folder)
         for img_path in os.listdir(unknow_folder):
@@ -103,18 +119,24 @@ def import_label_and_train(unknow_folder=temp_folder):
             try:
                 os.rename(src, dst)
             except FileExistsError:
-                print("WARNING: Duplicate file. Force overwrite file:", dst)
+                logging.warning("Duplicate file. Force overwrite file:" + str(dst))
+                # print("WARNING: Duplicate file. Force overwrite file:", dst)
                 os.remove(dst)
                 os.rename(src, dst)
                 pass
             
-        print(">> New label add to Train data!")
-        print(">> Start training. . .")
-        print(">> 1 - Embedding faces. . .")
+        # print(">> New label add to Train data!")
+        # print(">> Start training. . .")
+        # print(">> 1 - Embedding faces. . .")
+        logging.info(">> New label add to Train data!")
+        logging.info(">> Start training. . .")
+        logging.info(">> 1 - Embedding faces. . .")
         add_embedding(input_frame, target_folder)
-        print(">> 2 - Training new model. . .")
+        logging.info(">> 2 - Training new model. . .")
+        # print(">> 2 - Training new model. . .")
         train_svm()
-        print(">> 3 - Reloading new model. . .")
+        logging.info(">> 3 - Reloading new model. . .")
+        # print(">> 3 - Reloading new model. . .")
         with open(svm_path, "rb") as f:
             model = pickle.load(f)
             
@@ -123,7 +145,8 @@ def import_label_and_train(unknow_folder=temp_folder):
         
         embeddings = np.array(data["embeddings"])
         labels = le.fit_transform(data["names"])
-        print(">> Loaded new model, new faces can now recognizable!")
+        logging.info(">> Loaded new model, new faces can now recognizable!")
+        # print(">> Loaded new model, new faces can now recognizable!")
 
 def check_and_save_image(nimg, folder=temp_folder):
     if not os.path.exists(folder):
@@ -136,7 +159,8 @@ def check_and_save_image(nimg, folder=temp_folder):
             count_path += 1
         else:
             cv2.imwrite(frame_file, nimg)
-            print("   Save image sucessful:", frame_file)
+            # print("   Save image sucessful:", frame_file)
+            logging.info("Save image sucessful: " + str(frame_file))
             break
 
 def crop_box_face(frame, detection, expand_box_ratio=expand_box_ratio):
@@ -198,109 +222,115 @@ def stream():
     processing_frame_every = int(config["PROCESSING_FRAME_EVERY"]["processing_frame_every"])
     
     # Start streaming and recording
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
+    # cap = cv2.VideoCapture(0)
+    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
+    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
+    cap = cv2.VideoCapture("hoan.mp4")
     
     with mp_facedetector.FaceDetection(model_selection=model_selection, min_detection_confidence=min_detection_confidence) as face_detection:
         while cap.isOpened():
-            _, frame = cap.read()
-            frames += 1
-            # Fps caculating
-            fps_new_frame = time.time()
-            
-            # Save frames if press save_frame_btn button
-            if cv2.waitKey(1) == ord(save_frame_btn):
-                frame_count = 1
-                print(">> Order received, save" + str(save_frame_number) + " frame to [TEMP_FOLDER]")
-                _thread.start_new_thread(import_label_and_train, ())
-
-            if frames%processing_frame_every == 0:
-                frames = 0
-                trackers = []
-                texts = []
-                fake_ckeck = []
+            ret, frame = cap.read()
+            if ret:
+                frames += 1
+                # Fps caculating
+                fps_new_frame = time.time()
                 
-                results = face_detection.process(frame)
-                if results.detections is not None:
-                    for detection in results.detections:
-                        result = crop_box_face(frame, detection, expand_box_ratio)
-                        if result is not None:
-                            cropped, start_bbox_point, end_bbox_point = result
-                            if frame_count > save_frame_number:
-                                frame_count = 0
-                            if frame_count != 0:
-                                _thread.start_new_thread(check_and_save_image, (cropped, ))
-                                frame_count += 1
-                                
-                            text = ""
-                
-                            fake, score = anti_spoofing(cropped)
-                            if fake:
-                                text = "Fake face " + str(round(score, 2))
-                                fake_ckeck.append(True)
-                                texts.append(text)
-                            else:
-                                nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-                                nimg = np.transpose(nimg, (2,0,1))
-                                embedding = embedding_model.get_feature(nimg).reshape(1,-1)
-                                
-                                # # Predict class (SVM MODEL)
-                                preds = model.predict_proba(embedding)
-                                preds = preds.flatten()
-                                j = np.argmax(preds)
-                                proba = preds[j]
-                                # Compare this vector to source class vectors to verify it is actual belong to this class
-                                match_class_idx = (labels == j)
-                                match_class_idx = np.where(match_class_idx)[0]
-                                selected_idx = np.random.choice(match_class_idx, comparing_num)
-                                compare_embeddings = embeddings[selected_idx]
-                                # Calculate cosine similarity
-                                cos_similarity = CosineSimilarity(embedding, compare_embeddings)
-                                if cos_similarity < cosine_threshold and proba > proba_threshold:
-                                    text = le.classes_[j]
-                                    recognize_time = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-                                    database_processing(text, recognize_time)
-                                    
-                            # Start tracking
-                            tracker = dlib.correlation_tracker()
-                            rect = dlib.rectangle(start_bbox_point[0], start_bbox_point[1], end_bbox_point[0], end_bbox_point[1])
-                            tracker.start_track(frame, rect)
-                            trackers.append(tracker)
-                            texts.append(text)
-                            fake_ckeck.append(False)
-                            
-                            if fake:
-                                cv2.rectangle(frame, start_bbox_point, end_bbox_point, (0, 0, 255), 2)
-                                cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-                            else:
-                                cv2.rectangle(frame, start_bbox_point, end_bbox_point, (255,255,255), 2)
-                                cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
-                            break
-                            
-            else:
-                for tracker, text, fake_ in zip(trackers,texts,fake_ckeck):
-                    pos = tracker.get_position()
+                # Save frames if press save_frame_btn button
+                if cv2.waitKey(1) == ord(save_frame_btn):
+                    frame_count = 1
+                    logging.info(">> Order received, save" + str(save_frame_number) + " frame to [TEMP_FOLDER]")
+                    # print(">> Order received, save" + str(save_frame_number) + " frame to [TEMP_FOLDER]")
+                    _thread.start_new_thread(import_label_and_train, ())
 
-                    # unpack the position object
-                    startX = int(pos.left())
-                    startY = int(pos.top())
-                    endX = int(pos.right())
-                    endY = int(pos.bottom())
+                if frames%processing_frame_every == 0:
+                    frames = 0
+                    trackers = []
+                    texts = []
+                    fake_ckeck = []
                     
-                    if fake_ is True:
-                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0,0,255), 1)
-                        cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
-                    else:
-                        cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
-                        cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                    results = face_detection.process(frame)
+                    if results.detections is not None:
+                        for detection in results.detections:
+                            result = crop_box_face(frame, detection, expand_box_ratio)
+                            if result is not None:
+                                cropped, start_bbox_point, end_bbox_point = result
+                                if frame_count > save_frame_number:
+                                    frame_count = 0
+                                if frame_count != 0:
+                                    _thread.start_new_thread(check_and_save_image, (cropped, ))
+                                    frame_count += 1
+                                    
+                                text = ""
+                    
+                                fake, score = anti_spoofing(cropped)
+                                if fake:
+                                    text = "Fake face " + str(round(score, 2))
+                                    fake_ckeck.append(True)
+                                    texts.append(text)
+                                else:
+                                    nimg = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+                                    nimg = np.transpose(nimg, (2,0,1))
+                                    embedding = embedding_model.get_feature(nimg).reshape(1,-1)
+                                    
+                                    # # Predict class (SVM MODEL)
+                                    preds = model.predict_proba(embedding)
+                                    preds = preds.flatten()
+                                    j = np.argmax(preds)
+                                    proba = preds[j]
+                                    # Compare this vector to source class vectors to verify it is actual belong to this class
+                                    match_class_idx = (labels == j)
+                                    match_class_idx = np.where(match_class_idx)[0]
+                                    selected_idx = np.random.choice(match_class_idx, comparing_num)
+                                    compare_embeddings = embeddings[selected_idx]
+                                    # Calculate cosine similarity
+                                    cos_similarity = CosineSimilarity(embedding, compare_embeddings)
+                                    if cos_similarity < cosine_threshold and proba > proba_threshold:
+                                        text = le.classes_[j]
+                                        recognize_time = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+                                        database_processing(text, recognize_time)
+                                        
+                                # Start tracking
+                                tracker = dlib.correlation_tracker()
+                                rect = dlib.rectangle(start_bbox_point[0], start_bbox_point[1], end_bbox_point[0], end_bbox_point[1])
+                                tracker.start_track(frame, rect)
+                                trackers.append(tracker)
+                                texts.append(text)
+                                fake_ckeck.append(False)
+                                
+                                if fake:
+                                    cv2.rectangle(frame, start_bbox_point, end_bbox_point, (0, 0, 255), 2)
+                                    cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+                                else:
+                                    cv2.rectangle(frame, start_bbox_point, end_bbox_point, (255,255,255), 2)
+                                    cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                                break
+                                
+                else:
+                    for tracker, text, fake_ in zip(trackers,texts,fake_ckeck):
+                        pos = tracker.get_position()
+
+                        # unpack the position object
+                        startX = int(pos.left())
+                        startY = int(pos.top())
+                        endX = int(pos.right())
+                        endY = int(pos.bottom())
                         
-            # Calulate fps
-            fps = 1/(fps_new_frame - fps_prev_frame)
-            fps_prev_frame = fps_new_frame
-            cv2.putText(frame, str(round(fps, 2)), (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-            cv2.imshow("Frame", frame)  
-            if cv2.waitKey(1) & 0xFF == ord(quit_btn):
+                        if fake_ is True:
+                            cv2.rectangle(frame, (startX, startY), (endX, endY), (0,0,255), 1)
+                            cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
+                        else:
+                            cv2.rectangle(frame, (startX, startY), (endX, endY), (255,255,255), 1)
+                            cv2.putText(frame, text, (5, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+                            
+                # Calulate fps
+                fps = 1/(fps_new_frame - fps_prev_frame)
+                fps_prev_frame = fps_new_frame
+                cv2.putText(frame, str(round(fps, 2)), (5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                cv2.imshow("Frame", frame)
+                if cv2.waitKey(1) & 0xFF == ord(quit_btn):
+                    break
+            else:
+                logging.warning("Camera or video is disabled")
                 break
             
 stream()

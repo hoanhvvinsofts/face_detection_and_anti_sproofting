@@ -10,8 +10,7 @@ config.read("config.ini")
 train_dataset_path = config["DATASET"]["train_dataset_path"]
 database = config["DATABASE"]["database_name"]
 database_file = config["DATABASE"]["database_file"]
-# conn = sqlite3.connect(database_file)
-conn = sqlite3.connect("")
+conn = sqlite3.connect(database_file)
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 

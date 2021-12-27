@@ -2,35 +2,35 @@ import sys
 sys.path.append('insightface/deploy')
 sys.path.append('insightface/src/common')
 
-from sklearn.preprocessing import LabelEncoder
 from imutils import paths
 import numpy as np
 import face_model
-import argparse
 import pickle
 import cv2
 import os
 
-ap = argparse.ArgumentParser()
-ap.add_argument("--dataset", default="datasets/train",
-                help="Path to training dataset")
-ap.add_argument("--embeddings", default="src/outputs/embeddings.pickle")
-# Argument of insightface
-ap.add_argument('--image-size', default='112,112', help='')
-ap.add_argument('--model', default='insightface/models/model-y1-test2/model,0', help='path to load model.')
-ap.add_argument('--ga-model', default='', help='path to load model.')
-ap.add_argument('--gpu', default=0, type=int, help='gpu id')
-ap.add_argument('--det', default=0, type=int, help='mtcnn option, 1 means using R+O, 0 means detect from begining')
-ap.add_argument('--flip', default=0, type=int, help='whether do lr flip aug')
-ap.add_argument('--threshold', default=1.24, type=float, help='ver dist threshold')
-args = ap.parse_args()
+import configparser
+
+config = configparser.ConfigParser()
+config.read("config.ini")
+
+# FaceModel and parameters
+image_size = config["FACEMODEL"]["image_size"]
+model = config["FACEMODEL"]["model"]
+ga_model = config["FACEMODEL"]["ga_model"]
+threshold = float(config["FACEMODEL"]["threshold"])
+det = int(config["FACEMODEL"]["det"])
+embedding_model = face_model.FaceModel(image_size, model, ga_model, threshold, det)
+
+train_dataset_path = config["DATASET"]["train_dataset_path"]
+
+# Load saved embeddings and labels
+embeddings_path = config["EMBEDDINGS_AND_LABELS"]["embeddings_path"]
+labels_path = config["EMBEDDINGS_AND_LABELS"]["labels_path"]
 
 def faces_embedding():
     # Grab the paths to the input images in our dataset
-    imagePaths = list(paths.list_images(args.dataset))
-
-    # Initialize the faces embedder
-    embedding_model = face_model.FaceModel(args)
+    imagePaths = list(paths.list_images(train_dataset_path))
 
     # Initialize our lists of extracted facial embeddings and corresponding people names
     knownEmbeddings = []
@@ -56,14 +56,13 @@ def faces_embedding():
 
     # save to output
     data = {"embeddings": knownEmbeddings, "names": knownNames}
-    f = open(args.embeddings, "wb")
+    f = open(embeddings_path, "wb")
     f.write(pickle.dumps(data))
     f.close()
 
 def add_embedding(new_label_name, target_data_folder):
-    embedding_model = face_model.FaceModel(args)
     # Load the face embeddings
-    data = pickle.loads(open("src/outputs/embeddings.pickle", "rb").read())
+    data = pickle.loads(open(embeddings_path, "rb").read())
     knownNames = data["names"]     # List of labels name
     knownEmbeddings = data["embeddings"] # List of embeddings
     
@@ -83,6 +82,6 @@ def add_embedding(new_label_name, target_data_folder):
         
     # save to output
     data = {"embeddings": knownEmbeddings, "names": knownNames}
-    f = open(args.embeddings, "wb")
+    f = open(embeddings_path, "wb")
     f.write(pickle.dumps(data))
     f.close()
